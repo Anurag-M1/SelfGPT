@@ -38,7 +38,6 @@ DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", APP_DEFAULT_MODEL)
 DEFAULT_SYSTEM_PROMPT = os.getenv("DEFAULT_SYSTEM_PROMPT", APP_DEFAULT_SYSTEM_PROMPT)
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 GOOGLE_CSE_ID = os.getenv("GOOGLE_CSE_ID")
-API_KEY = os.getenv("SELFGPT_API_KEY") or os.getenv("API_KEY")
 RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "60"))
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "20"))
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
@@ -76,18 +75,6 @@ def _client_ip(request: Request) -> str:
     if request.client:
         return request.client.host
     return "unknown"
-
-
-def _require_api_key(request: Request) -> Optional[JSONResponse]:
-    if not API_KEY:
-        return None
-    auth = request.headers.get("authorization", "")
-    header_key = request.headers.get("x-api-key")
-    if header_key == API_KEY:
-        return None
-    if auth.lower().startswith("bearer ") and auth.split(" ", 1)[1].strip() == API_KEY:
-        return None
-    return JSONResponse(status_code=401, content={"error": "Unauthorized"})
 
 
 def _check_rate_limit(request: Request) -> Optional[JSONResponse]:
@@ -394,7 +381,7 @@ def config():
 
 @app.get("/api/threads")
 def api_threads(request: Request):
-    err = _require_api_key(request) or _check_rate_limit(request)
+    err = _check_rate_limit(request)
     if err:
         return err
     return {"threads": list_threads()}
@@ -402,7 +389,7 @@ def api_threads(request: Request):
 
 @app.get("/api/threads/{thread_id}")
 def api_thread(thread_id: str, request: Request):
-    err = _require_api_key(request) or _check_rate_limit(request)
+    err = _check_rate_limit(request)
     if err:
         return err
     return {"thread_id": thread_id, "messages": get_messages(thread_id)}
@@ -410,7 +397,7 @@ def api_thread(thread_id: str, request: Request):
 
 @app.post("/api/threads")
 def api_new_thread(request: Request):
-    err = _require_api_key(request) or _check_rate_limit(request)
+    err = _check_rate_limit(request)
     if err:
         return err
     return {"thread_id": str(uuid.uuid4())}
@@ -418,7 +405,7 @@ def api_new_thread(request: Request):
 
 @app.get("/api/models")
 def api_models(provider: str, request: Request):
-    err = _require_api_key(request) or _check_rate_limit(request)
+    err = _check_rate_limit(request)
     if err:
         return err
     try:
@@ -429,7 +416,7 @@ def api_models(provider: str, request: Request):
 
 @app.post("/api/upload")
 def api_upload(request: Request, thread_id: str = Form(...), files: List[UploadFile] = File(...)):
-    err = _require_api_key(request) or _check_rate_limit(request)
+    err = _check_rate_limit(request)
     if err:
         return err
     summaries = []
@@ -449,7 +436,7 @@ def api_upload(request: Request, thread_id: str = Form(...), files: List[UploadF
 
 @app.get("/api/docs/{thread_id}")
 def api_docs(thread_id: str, request: Request):
-    err = _require_api_key(request) or _check_rate_limit(request)
+    err = _check_rate_limit(request)
     if err:
         return err
     return {"thread_id": thread_id, "metadata": thread_document_metadata(thread_id)}
@@ -457,7 +444,7 @@ def api_docs(thread_id: str, request: Request):
 
 @app.post("/api/chat")
 def api_chat(payload: Dict[str, Any], request: Request):
-    err = _require_api_key(request) or _check_rate_limit(request)
+    err = _check_rate_limit(request)
     if err:
         return err
     thread_id = payload.get("thread_id") or str(uuid.uuid4())

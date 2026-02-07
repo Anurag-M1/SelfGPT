@@ -19,8 +19,6 @@ import { Sparkles } from 'lucide-react'
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ''
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY?.trim()
-const apiHeaders = API_KEY ? { 'x-api-key': API_KEY } : {}
 
 export function ChatApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -103,7 +101,6 @@ export function ChatApp() {
 
         const uploadResp = await fetch(`${API_BASE}/api/upload`, {
           method: 'POST',
-          headers: apiHeaders,
           body: form,
         })
         if (!uploadResp.ok) {
@@ -133,7 +130,7 @@ export function ChatApp() {
 
           const resp = await fetch(`${API_BASE}/api/chat`, {
             method: 'POST',
-            headers: { 'content-type': 'application/json', ...apiHeaders },
+            headers: { 'content-type': 'application/json' },
             body: JSON.stringify(payload),
             signal: controller.signal,
           })

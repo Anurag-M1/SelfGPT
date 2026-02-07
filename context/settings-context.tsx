@@ -4,9 +4,6 @@ import React, { createContext, useContext, useEffect, useMemo, useState } from '
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ''
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY?.trim()
-
-const apiHeaders = API_KEY ? { 'x-api-key': API_KEY } : {}
 
 const STORAGE_KEY = 'selfgpt_settings'
 
@@ -78,9 +75,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       setIsConfigLoading(true)
       setConfigError(null)
       try {
-        const resp = await fetch(`${API_BASE}/api/config`, {
-          headers: apiHeaders,
-        })
+        const resp = await fetch(`${API_BASE}/api/config`)
         if (!resp.ok) {
           throw new Error(await resp.text())
         }
@@ -152,9 +147,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setModelError(null)
     setModels([])
     try {
-      const resp = await fetch(`${API_BASE}/api/models?provider=${encodeURIComponent(target)}`, {
-        headers: apiHeaders,
-      })
+      const resp = await fetch(`${API_BASE}/api/models?provider=${encodeURIComponent(target)}`)
       const data = await resp.json()
       if (!resp.ok || data?.error) {
         throw new Error(data?.error || 'Unable to load models')

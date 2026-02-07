@@ -110,7 +110,6 @@ DEFAULT_MODEL=llama-3.3-70b-versatile
 DEFAULT_SYSTEM_PROMPT="You are a helpful assistant."
 
 # Security
-SELFGPT_API_KEY=YOUR_INTERNAL_API_KEY
 RATE_LIMIT_PER_MIN=60
 MAX_UPLOAD_MB=10
 MAX_MESSAGE_LEN=6000
@@ -136,7 +135,6 @@ NEXT_PUBLIC_LLM_PROVIDER=groq
 NEXT_PUBLIC_LLM_MODEL=llama-3.3-70b-versatile
 NEXT_PUBLIC_SYSTEM_PROMPT="You are a helpful assistant."
 NEXT_PUBLIC_USE_WEB=true
-NEXT_PUBLIC_API_KEY=YOUR_INTERNAL_API_KEY   # must match SELFGPT_API_KEY if auth is enabled
 ```
 If `NEXT_PUBLIC_API_BASE_URL` is not set, the Next.js dev server will proxy `/api/*` to the FastAPI backend at `http://localhost:8000`.
 
@@ -151,7 +149,6 @@ This starts:
 - Next.js on `http://localhost:3000`
 
 ## Security Notes (Production‑Grade Defaults)
-- **API key auth**: all `/api/*` routes require `SELFGPT_API_KEY` if set.
 - **Rate limiting**: per‑IP, per minute.
 - **Upload limits**: defaults to 10MB per file.
 - **Thread ID sanitization**: prevents path traversal.
