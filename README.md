@@ -122,6 +122,9 @@ CORS_ORIGINS=http://localhost:3000
 # SQLite DB path (set to a persistent disk on the backend host)
 DB_PATH=/var/data/chatbot.db
 
+# Postgres (use this instead of DB_PATH when you don't have a disk)
+DATABASE_URL=postgresql://user:pass@host:5432/dbname
+
 # RAG store path (set to a persistent disk on the backend host)
 RAG_STORE_DIR=/var/data/rag_store
 ```
