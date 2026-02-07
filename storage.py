@@ -12,9 +12,9 @@ _IS_POSTGRES = bool(DATABASE_URL)
 
 if _IS_POSTGRES:
     try:
-        import psycopg2
+        import psycopg
     except Exception as exc:  # pragma: no cover
-        raise RuntimeError("psycopg2 is required when DATABASE_URL is set") from exc
+        raise RuntimeError("psycopg is required when DATABASE_URL is set") from exc
 
 
 def _utc_now() -> str:
@@ -23,7 +23,7 @@ def _utc_now() -> str:
 
 def _connect():
     if _IS_POSTGRES:
-        return psycopg2.connect(DATABASE_URL)
+        return psycopg.connect(DATABASE_URL)
     return sqlite3.connect(DB_PATH)
 
 
