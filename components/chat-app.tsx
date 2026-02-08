@@ -67,9 +67,9 @@ export function ChatApp() {
   }
 
   const handleSendMessage = async (text: string, files?: File[]) => {
-    if (!activeChat) {
-      console.error('[v0] No active chat')
-      return
+    let targetChat = activeChat
+    if (!targetChat) {
+      targetChat = createChat()
     }
 
     const messageId = Date.now().toString()
@@ -80,12 +80,12 @@ export function ChatApp() {
       timestamp: Date.now(),
     }
 
-    addMessage(activeChat.id, userMessage)
+    addMessage(targetChat.id, userMessage)
 
     // Update chat title if it's the first message
-    if (activeChat.messages.length === 0) {
+    if (targetChat.messages.length === 0) {
       const title = text.substring(0, 50) + (text.length > 50 ? '...' : '')
-      renameChat(activeChat.id, title)
+      renameChat(targetChat.id, title)
     }
 
     // Send to AI
@@ -98,7 +98,7 @@ export function ChatApp() {
 
       if (files && files.length > 0) {
         const form = new FormData()
-        form.append('thread_id', activeChat.id)
+        form.append('thread_id', targetChat.id)
         files.forEach(file => form.append('files', file))
 
         const uploadResp = await fetch(`${API_BASE}/api/upload`, {
@@ -123,7 +123,7 @@ export function ChatApp() {
 
         try {
           const payload: Record<string, unknown> = {
-            thread_id: activeChat.id,
+            thread_id: targetChat.id,
             message: text,
           }
           if (settings.provider) payload.provider = settings.provider
@@ -175,7 +175,7 @@ export function ChatApp() {
       if (reply) {
         const assistantId = `${Date.now()}-assistant`
         const { typed, suffix } = splitForTyping(reply)
-        addMessage(activeChat.id, {
+        addMessage(targetChat.id, {
           id: assistantId,
           role: 'assistant',
           content: '',
@@ -190,14 +190,14 @@ export function ChatApp() {
         let cursor = 0
         typingRef.current = window.setInterval(() => {
           cursor = Math.min(typed.length, cursor + TYPE_CHUNK_SIZE)
-          updateMessage(activeChat.id, assistantId, {
+          updateMessage(targetChat.id, assistantId, {
             content: typed.slice(0, cursor),
           })
           if (cursor >= typed.length && typingRef.current) {
             window.clearInterval(typingRef.current)
             typingRef.current = null
             if (suffix) {
-              updateMessage(activeChat.id, assistantId, {
+              updateMessage(targetChat.id, assistantId, {
                 content: `${typed}${suffix}`,
               })
             }
@@ -210,7 +210,7 @@ export function ChatApp() {
         return
       }
       console.error('[v0] Error sending message:', error)
-      addMessage(activeChat.id, {
+      addMessage(targetChat.id, {
         id: Date.now().toString(),
         role: 'assistant',
         content: 'Sorry, something went wrong while generating a response.',

@@ -102,10 +102,25 @@ export function ChatProvider({
           })
         }
         if (!cancelled) {
-          setChats(loaded)
-          setActiveChat(loaded[0] || null)
-          if (typeof window !== 'undefined') {
-            localStorage.setItem(storageKey, JSON.stringify(loaded))
+          if (loaded.length === 0) {
+            const initialChat: Chat = {
+              id: Date.now().toString(),
+              title: 'New Chat',
+              messages: [],
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+            }
+            setChats([initialChat])
+            setActiveChat(initialChat)
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(storageKey, JSON.stringify([initialChat]))
+            }
+          } else {
+            setChats(loaded)
+            setActiveChat(loaded[0] || null)
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(storageKey, JSON.stringify(loaded))
+            }
           }
         }
       } catch (error) {
