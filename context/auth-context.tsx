@@ -21,6 +21,18 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
+const normalizeEmail = (email: string) => email.trim().toLowerCase()
+
+const userIdFromEmail = (email: string) => {
+  const input = normalizeEmail(email)
+  let hash = 5381
+  for (let i = 0; i < input.length; i += 1) {
+    hash = (hash * 33) ^ input.charCodeAt(i)
+  }
+  const id = (hash >>> 0).toString(16)
+  return `user_${id}`
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
@@ -54,10 +66,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 500))
       
+      const normalizedEmail = normalizeEmail(email)
       const newUser: User = {
-        id: Date.now().toString(),
-        email,
-        name: email.split('@')[0],
+        id: userIdFromEmail(normalizedEmail),
+        email: normalizedEmail,
+        name: normalizedEmail.split('@')[0],
         theme: 'dark',
       }
       setUser(newUser)
@@ -80,10 +93,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 500))
       
+      const normalizedEmail = normalizeEmail(email)
       const newUser: User = {
-        id: Date.now().toString(),
-        email,
-        name,
+        id: userIdFromEmail(normalizedEmail),
+        email: normalizedEmail,
+        name: name.trim(),
         theme: 'dark',
       }
       setUser(newUser)
