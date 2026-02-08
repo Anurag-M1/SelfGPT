@@ -166,7 +166,3 @@ This starts:
 
 ## Troubleshooting
 - **Hydration warning**: If you see `vsc-initialized` in a hydration error, a browser extension is injecting DOM changes. Disable the extension or use Incognito.
-
----
-
-If you want a separate production deployment guide (Docker, reverse proxy, TLS, etc.), ask and I’ll add it.
