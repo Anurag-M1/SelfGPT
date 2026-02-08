@@ -4,11 +4,10 @@ import React, { useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from '@/context/auth-context'
 import { ChatProvider } from '@/context/chat-context'
 import { SettingsProvider } from '@/context/settings-context'
-import { AuthPage } from '@/components/auth-page'
 import { ChatApp } from '@/components/chat-app'
 
 function PageContent() {
-  const { user, isLoading } = useAuth()
+  const { isLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -28,14 +27,12 @@ function PageContent() {
     )
   }
 
-  return user ? (
+  return (
     <SettingsProvider>
       <ChatProvider>
         <ChatApp />
       </ChatProvider>
     </SettingsProvider>
-  ) : (
-    <AuthPage />
   )
 }
 
