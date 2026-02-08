@@ -3,7 +3,9 @@
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ''
+  typeof window === 'undefined'
+    ? process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || 'http://localhost:8000'
+    : ''
 
 const STORAGE_KEY = 'selfgpt_settings'
 

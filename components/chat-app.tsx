@@ -18,7 +18,9 @@ import {
 import { Sparkles } from 'lucide-react'
 
 const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ''
+  typeof window === 'undefined'
+    ? process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || 'http://localhost:8000'
+    : ''
 
 export function ChatApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)
