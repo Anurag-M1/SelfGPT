@@ -101,10 +101,13 @@ export function ChatApp() {
         form.append('thread_id', activeChat.id)
         files.forEach(file => form.append('files', file))
 
-        const uploadResp = await fetch(`${API_BASE}/api/upload`, {
-          method: 'POST',
-          body: form,
-        })
+        const uploadResp = await fetch(
+          `${API_BASE}/api/upload?user_id=${encodeURIComponent(user?.id || '')}`,
+          {
+            method: 'POST',
+            body: form,
+          },
+        )
         if (!uploadResp.ok) {
           const errText = await uploadResp.text()
           throw new Error(errText || 'File upload failed')
@@ -125,6 +128,7 @@ export function ChatApp() {
             thread_id: activeChat.id,
             message: text,
           }
+          if (user?.id) payload.user_id = user.id
           if (settings.provider) payload.provider = settings.provider
           if (modelOverride || settings.model) payload.model = modelOverride || settings.model
           if (settings.systemPrompt) payload.system_prompt = settings.systemPrompt

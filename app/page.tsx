@@ -30,7 +30,7 @@ function PageContent() {
 
   return user ? (
     <SettingsProvider>
-      <ChatProvider>
+      <ChatProvider userId={user.id}>
         <ChatApp />
       </ChatProvider>
     </SettingsProvider>

@@ -36,15 +36,22 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
-export function ChatProvider({ children }: { children: React.ReactNode }) {
+export function ChatProvider({
+  children,
+  userId,
+}: {
+  children: React.ReactNode
+  userId?: string | null
+}) {
   const [chats, setChats] = useState<Chat[]>([])
   const [activeChat, setActiveChat] = useState<Chat | null>(null)
+  const storageKey = userId ? `selfgpt_chats_${userId}` : 'selfgpt_chats'
 
   // Load chats from localStorage on mount
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
-        const storedChats = localStorage.getItem('selfgpt_chats')
+        const storedChats = localStorage.getItem(storageKey)
         if (storedChats) {
           try {
             const parsed = JSON.parse(storedChats)
@@ -53,7 +60,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
               setActiveChat(parsed[0])
             }
           } catch {
-            localStorage.removeItem('selfgpt_chats')
+            localStorage.removeItem(storageKey)
           }
         } else {
           // Create initial chat
@@ -81,20 +88,20 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
       setChats([initialChat])
       setActiveChat(initialChat)
     }
-  }, [])
+  }, [storageKey])
 
   // Save chats to localStorage whenever they change
   useEffect(() => {
     try {
       if (chats.length > 0 && typeof window !== 'undefined') {
-        localStorage.setItem('selfgpt_chats', JSON.stringify(chats))
+        localStorage.setItem(storageKey, JSON.stringify(chats))
       } else if (typeof window !== 'undefined') {
-        localStorage.removeItem('selfgpt_chats')
+        localStorage.removeItem(storageKey)
       }
     } catch (error) {
       console.error('[v0] Error saving chats:', error)
     }
-  }, [chats])
+  }, [chats, storageKey])
 
   const createChat = (title?: string): Chat => {
     const newChat: Chat = {
@@ -190,7 +197,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     setActiveChat(null)
     if (typeof window !== 'undefined') {
       try {
-        localStorage.removeItem('selfgpt_chats')
+        localStorage.removeItem(storageKey)
       } catch (error) {
         console.error('[v0] Error clearing chats:', error)
       }

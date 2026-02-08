@@ -317,6 +317,17 @@ def _build_prompt(
     return "\n\n".join(sections)
 
 
+def _normalize_user_id(user_id: Optional[str]) -> str:
+    raw = (user_id or "default").strip()
+    if not raw:
+        return "default"
+    return raw
+
+
+def _scoped_thread_id(user_id: Optional[str], thread_id: str) -> str:
+    return f"{_normalize_user_id(user_id)}::{thread_id}"
+
+
 def _list_models(provider_id: str) -> Dict[str, Any]:
     config = PROVIDERS.get(provider_id)
     if not config:
@@ -384,7 +395,8 @@ def api_threads(request: Request):
     err = _check_rate_limit(request)
     if err:
         return err
-    return {"threads": list_threads()}
+    user_id = request.query_params.get("user_id")
+    return {"threads": list_threads(user_id)}
 
 
 @app.get("/api/threads/{thread_id}")
@@ -392,7 +404,8 @@ def api_thread(thread_id: str, request: Request):
     err = _check_rate_limit(request)
     if err:
         return err
-    return {"thread_id": thread_id, "messages": get_messages(thread_id)}
+    user_id = request.query_params.get("user_id")
+    return {"thread_id": thread_id, "messages": get_messages(user_id, thread_id)}
 
 
 @app.post("/api/threads")
@@ -419,6 +432,8 @@ def api_upload(request: Request, thread_id: str = Form(...), files: List[UploadF
     err = _check_rate_limit(request)
     if err:
         return err
+    user_id = request.query_params.get("user_id")
+    scoped_thread_id = _scoped_thread_id(user_id, thread_id)
     summaries = []
     for f in files:
         if f.content_type not in {"application/pdf", "application/x-pdf"}:
@@ -429,7 +444,7 @@ def api_upload(request: Request, thread_id: str = Form(...), files: List[UploadF
             content = _read_upload_limited(f.file, MAX_UPLOAD_BYTES)
         except ValueError:
             return JSONResponse(status_code=413, content={"error": "File too large"})
-        summary = ingest_pdf(content, thread_id=thread_id, filename=f.filename)
+        summary = ingest_pdf(content, thread_id=scoped_thread_id, filename=f.filename)
         summaries.append(summary)
     return {"thread_id": thread_id, "summaries": summaries}
 
@@ -439,7 +454,9 @@ def api_docs(thread_id: str, request: Request):
     err = _check_rate_limit(request)
     if err:
         return err
-    return {"thread_id": thread_id, "metadata": thread_document_metadata(thread_id)}
+    user_id = request.query_params.get("user_id")
+    scoped_thread_id = _scoped_thread_id(user_id, thread_id)
+    return {"thread_id": thread_id, "metadata": thread_document_metadata(scoped_thread_id)}
 
 
 @app.post("/api/chat")
@@ -447,7 +464,9 @@ def api_chat(payload: Dict[str, Any], request: Request):
     err = _check_rate_limit(request)
     if err:
         return err
+    user_id = payload.get("user_id")
     thread_id = payload.get("thread_id") or str(uuid.uuid4())
+    scoped_thread_id = _scoped_thread_id(user_id, thread_id)
     provider_id = payload.get("provider") or DEFAULT_PROVIDER
     model = payload.get("model") or DEFAULT_MODEL
     system_prompt = payload.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
@@ -465,15 +484,15 @@ def api_chat(payload: Dict[str, Any], request: Request):
     if len(user_message) > MAX_MESSAGE_LEN:
         return JSONResponse(status_code=400, content={"error": "Message too long"})
 
-    add_message(thread_id, "user", user_message)
+    add_message(user_id, thread_id, "user", user_message)
 
-    rag = retrieve_context(user_message, thread_id)
+    rag = retrieve_context(user_message, scoped_thread_id)
     web_results = _web_search(user_message) if use_web else []
 
     if MAX_HISTORY_MESSAGES is None:
-        history = get_messages(thread_id)
+        history = get_messages(user_id, thread_id)
     else:
-        history = get_recent_messages(thread_id, limit=MAX_HISTORY_MESSAGES)
+        history = get_recent_messages(user_id, thread_id, limit=MAX_HISTORY_MESSAGES)
     if history and history[-1].get("role") == "user" and history[-1].get("content") == user_message:
         history = history[:-1]
     prompt = _build_prompt(system_prompt, user_message, rag["context"], web_results, history)
@@ -502,7 +521,7 @@ def api_chat(payload: Dict[str, Any], request: Request):
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
-    add_message(thread_id, "assistant", response)
+    add_message(user_id, thread_id, "assistant", response)
 
     return {
         "thread_id": thread_id,

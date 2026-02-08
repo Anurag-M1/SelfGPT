@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import re
+import hashlib
 import sqlite3
 from datetime import datetime, timezone
 from typing import List, Dict
@@ -25,6 +27,23 @@ def _connect():
     if _IS_POSTGRES:
         return psycopg.connect(DATABASE_URL)
     return sqlite3.connect(DB_PATH)
+
+
+_SAFE_USER_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
+def _normalize_user_id(user_id: str | None) -> str:
+    raw = (user_id or "default").strip()
+    if not raw:
+        return "default"
+    if _SAFE_USER_RE.match(raw):
+        return raw
+    digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+    return f"user-{digest}"
+
+
+def _scoped_thread_id(user_id: str | None, thread_id: str) -> str:
+    return f"{_normalize_user_id(user_id)}::{thread_id}"
 
 
 def init_db() -> None:
@@ -65,47 +84,57 @@ def init_db() -> None:
         conn.close()
 
 
-def list_threads() -> List[str]:
+def list_threads(user_id: str | None) -> List[str]:
     conn = _connect()
+    prefix = f"{_normalize_user_id(user_id)}::"
     try:
-        rows = conn.execute(
-            "SELECT thread_id FROM messages GROUP BY thread_id ORDER BY MAX(created_at) DESC",
-        ).fetchall()
-        return [row[0] for row in rows]
+        if _IS_POSTGRES:
+            rows = conn.execute(
+                "SELECT thread_id FROM messages WHERE thread_id LIKE %s GROUP BY thread_id ORDER BY MAX(created_at) DESC",
+                (f"{prefix}%",),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT thread_id FROM messages WHERE thread_id LIKE ? GROUP BY thread_id ORDER BY MAX(created_at) DESC",
+                (f"{prefix}%",),
+            ).fetchall()
+        return [row[0][len(prefix):] for row in rows]
     finally:
         conn.close()
 
 
-def get_messages(thread_id: str) -> List[Dict[str, str]]:
+def get_messages(user_id: str | None, thread_id: str) -> List[Dict[str, str]]:
     conn = _connect()
+    scoped = _scoped_thread_id(user_id, thread_id)
     try:
         if _IS_POSTGRES:
             rows = conn.execute(
                 "SELECT role, content FROM messages WHERE thread_id = %s ORDER BY id",
-                (thread_id,),
+                (scoped,),
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT role, content FROM messages WHERE thread_id = ? ORDER BY id",
-                (thread_id,),
+                (scoped,),
             ).fetchall()
         return [{"role": role, "content": content} for role, content in rows]
     finally:
         conn.close()
 
 
-def get_recent_messages(thread_id: str, limit: int = 12) -> List[Dict[str, str]]:
+def get_recent_messages(user_id: str | None, thread_id: str, limit: int = 12) -> List[Dict[str, str]]:
     conn = _connect()
+    scoped = _scoped_thread_id(user_id, thread_id)
     try:
         if _IS_POSTGRES:
             rows = conn.execute(
                 "SELECT role, content FROM messages WHERE thread_id = %s ORDER BY id DESC LIMIT %s",
-                (thread_id, limit),
+                (scoped, limit),
             ).fetchall()
         else:
             rows = conn.execute(
                 "SELECT role, content FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT ?",
-                (thread_id, limit),
+                (scoped, limit),
             ).fetchall()
         rows.reverse()
         return [{"role": role, "content": content} for role, content in rows]
@@ -113,18 +142,19 @@ def get_recent_messages(thread_id: str, limit: int = 12) -> List[Dict[str, str]]
         conn.close()
 
 
-def add_message(thread_id: str, role: str, content: str) -> None:
+def add_message(user_id: str | None, thread_id: str, role: str, content: str) -> None:
     conn = _connect()
+    scoped = _scoped_thread_id(user_id, thread_id)
     try:
         if _IS_POSTGRES:
             conn.execute(
                 "INSERT INTO messages (thread_id, role, content, created_at) VALUES (%s, %s, %s, %s)",
-                (thread_id, role, content, _utc_now()),
+                (scoped, role, content, _utc_now()),
             )
         else:
             conn.execute(
                 "INSERT INTO messages (thread_id, role, content, created_at) VALUES (?, ?, ?, ?)",
-                (thread_id, role, content, _utc_now()),
+                (scoped, role, content, _utc_now()),
             )
         conn.commit()
     finally:
