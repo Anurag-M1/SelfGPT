@@ -46,9 +46,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const login = async (email: string, password: string) => {
-    if (!email.trim() || !password.trim()) {
-      throw new Error('Email and password are required.')
-    }
     setIsLoading(true)
     try {
       // Simulate API call
@@ -72,9 +69,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signupEmail = async (email: string, password: string, name: string) => {
-    if (!email.trim() || !password.trim() || !name.trim()) {
-      throw new Error('Name, email and password are required.')
-    }
     setIsLoading(true)
     try {
       // Simulate API call

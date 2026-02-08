@@ -13,7 +13,6 @@ export function AuthPage() {
   const { login, signupEmail } = useAuth()
   const [mode, setMode] = useState<AuthMode>('login')
   const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -27,23 +26,12 @@ export function AuthPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setError(null)
-    const email = formData.email.trim()
-    const password = formData.password.trim()
-    if (!email || !password) {
-      setError('Email and password are required.')
-      return
-    }
-    if (mode === 'signup' && !formData.name.trim()) {
-      setError('Full name is required.')
-      return
-    }
     setIsLoading(true)
     try {
       if (mode === 'login') {
-        await login(email, password)
+        await login(formData.email, formData.password)
       } else {
-        await signupEmail(email, password, formData.name.trim())
+        await signupEmail(formData.email, formData.password, formData.name)
       }
     } finally {
       setIsLoading(false)
@@ -118,20 +106,12 @@ export function AuthPage() {
 
             <Button
               type="submit"
-              disabled={
-                isLoading ||
-                !formData.email.trim() ||
-                !formData.password.trim() ||
-                (mode === 'signup' && !formData.name.trim())
-              }
+              disabled={isLoading}
               className="w-full bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70"
             >
               {isLoading ? 'Loading...' : mode === 'login' ? 'Sign In' : 'Create Account'}
             </Button>
           </form>
-          {error && (
-            <p className="mt-3 text-sm text-destructive text-center">{error}</p>
-          )}
 
           {/* Toggle Auth Mode */}
           <p className="text-center text-sm text-muted-foreground mt-6">
