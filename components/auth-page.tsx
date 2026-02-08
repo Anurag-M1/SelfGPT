@@ -45,6 +45,8 @@ export function AuthPage() {
       } else {
         await signupEmail(email, password, formData.name.trim())
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Authentication failed.')
     } finally {
       setIsLoading(false)
     }

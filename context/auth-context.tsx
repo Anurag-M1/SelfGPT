@@ -12,6 +12,7 @@ interface User {
 
 interface AuthContextType {
   user: User | null
+  token: string | null
   isLoading: boolean
   login: (email: string, password: string) => Promise<void>
   signupEmail: (email: string, password: string, name: string) => Promise<void>
@@ -21,33 +22,41 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 
-const normalizeEmail = (email: string) => email.trim().toLowerCase()
-
-const userIdFromEmail = (email: string) => {
-  const input = normalizeEmail(email)
-  let hash = 5381
-  for (let i = 0; i < input.length; i += 1) {
-    hash = (hash * 33) ^ input.charCodeAt(i)
-  }
-  const id = (hash >>> 0).toString(16)
-  return `user_${id}`
-}
+const API_BASE =
+  typeof window === 'undefined'
+    ? process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || 'http://localhost:8000'
+    : ''
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null)
+  const [token, setToken] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   // Load user from localStorage on mount
   useEffect(() => {
     try {
       if (typeof window !== 'undefined') {
-        const storedUser = localStorage.getItem('selfgpt_user')
-        if (storedUser) {
-          try {
-            setUser(JSON.parse(storedUser))
-          } catch {
-            localStorage.removeItem('selfgpt_user')
+        const storedToken = localStorage.getItem('selfgpt_token')
+        if (storedToken) {
+          const loadUser = async () => {
+            try {
+              const resp = await fetch(`${API_BASE}/api/auth/me`, {
+                headers: { Authorization: `Bearer ${storedToken}` },
+              })
+              if (resp.ok) {
+                const data = await resp.json()
+                setUser(data.user)
+                setToken(storedToken)
+              } else {
+                localStorage.removeItem('selfgpt_token')
+                localStorage.removeItem('selfgpt_user')
+              }
+            } catch {
+              localStorage.removeItem('selfgpt_token')
+              localStorage.removeItem('selfgpt_user')
+            }
           }
+          loadUser()
         }
       }
     } catch (error) {
@@ -63,22 +72,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setIsLoading(true)
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      const normalizedEmail = normalizeEmail(email)
-      const newUser: User = {
-        id: userIdFromEmail(normalizedEmail),
-        email: normalizedEmail,
-        name: normalizedEmail.split('@')[0],
-        theme: 'dark',
+      const resp = await fetch(`${API_BASE}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      if (!resp.ok) {
+        const errText = await resp.text()
+        throw new Error(errText || 'Login failed')
       }
-      setUser(newUser)
+      const data = await resp.json()
+      setUser(data.user)
+      setToken(data.token)
       if (typeof window !== 'undefined') {
-        localStorage.setItem('selfgpt_user', JSON.stringify(newUser))
+        localStorage.setItem('selfgpt_user', JSON.stringify(data.user))
+        localStorage.setItem('selfgpt_token', data.token)
       }
     } catch (error) {
       console.error('[v0] Login error:', error)
+      throw error
     } finally {
       setIsLoading(false)
     }
@@ -90,22 +102,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setIsLoading(true)
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500))
-      
-      const normalizedEmail = normalizeEmail(email)
-      const newUser: User = {
-        id: userIdFromEmail(normalizedEmail),
-        email: normalizedEmail,
-        name: name.trim(),
-        theme: 'dark',
+      const resp = await fetch(`${API_BASE}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, password, name }),
+      })
+      if (!resp.ok) {
+        const errText = await resp.text()
+        throw new Error(errText || 'Signup failed')
       }
-      setUser(newUser)
+      const data = await resp.json()
+      setUser(data.user)
+      setToken(data.token)
       if (typeof window !== 'undefined') {
-        localStorage.setItem('selfgpt_user', JSON.stringify(newUser))
+        localStorage.setItem('selfgpt_user', JSON.stringify(data.user))
+        localStorage.setItem('selfgpt_token', data.token)
       }
     } catch (error) {
       console.error('[v0] Signup error:', error)
+      throw error
     } finally {
       setIsLoading(false)
     }
@@ -113,9 +128,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = () => {
     setUser(null)
+    setToken(null)
     try {
       if (typeof window !== 'undefined') {
         localStorage.removeItem('selfgpt_user')
+        localStorage.removeItem('selfgpt_token')
       }
     } catch (error) {
       console.error('[v0] Error removing user:', error)
@@ -137,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, signupEmail, logout, updateProfile }}>
+    <AuthContext.Provider value={{ user, token, isLoading, login, signupEmail, logout, updateProfile }}>
       {children}
     </AuthContext.Provider>
   )

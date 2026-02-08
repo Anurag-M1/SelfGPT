@@ -36,72 +36,88 @@ interface ChatContextType {
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
+const API_BASE =
+  typeof window === 'undefined'
+    ? process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || 'http://localhost:8000'
+    : ''
+
 export function ChatProvider({
   children,
   userId,
+  token,
 }: {
   children: React.ReactNode
   userId?: string | null
+  token?: string | null
 }) {
   const [chats, setChats] = useState<Chat[]>([])
   const [activeChat, setActiveChat] = useState<Chat | null>(null)
   const storageKey = userId ? `selfgpt_chats_${userId}` : 'selfgpt_chats'
 
-  // Load chats from localStorage on mount
+  // Load chats from backend on login
   useEffect(() => {
-    try {
-      if (typeof window !== 'undefined') {
-        const storedChats = localStorage.getItem(storageKey)
-        if (storedChats) {
-          try {
-            const parsed = JSON.parse(storedChats)
-            setChats(parsed)
-            if (parsed.length > 0) {
-              setActiveChat(parsed[0])
-            }
-          } catch {
-            localStorage.removeItem(storageKey)
-          }
-        } else {
-          // Create initial chat
-          const initialChat: Chat = {
-            id: Date.now().toString(),
-            title: 'New Chat',
-            messages: [],
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-          }
-          setChats([initialChat])
-          setActiveChat(initialChat)
-        }
-      }
-    } catch (error) {
-      console.error('[v0] Error loading chats:', error)
-      // Create initial chat on error
-      const initialChat: Chat = {
-        id: Date.now().toString(),
-        title: 'New Chat',
-        messages: [],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      }
-      setChats([initialChat])
-      setActiveChat(initialChat)
-    }
-  }, [storageKey])
+    let cancelled = false
 
-  // Save chats to localStorage whenever they change
-  useEffect(() => {
-    try {
-      if (chats.length > 0 && typeof window !== 'undefined') {
-        localStorage.setItem(storageKey, JSON.stringify(chats))
-      } else if (typeof window !== 'undefined') {
-        localStorage.removeItem(storageKey)
+    async function loadFromServer() {
+      if (!token || !userId) {
+        setChats([])
+        setActiveChat(null)
+        return
       }
-    } catch (error) {
-      console.error('[v0] Error saving chats:', error)
+      try {
+        const resp = await fetch(`${API_BASE}/api/threads`, {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        if (!resp.ok) {
+          throw new Error(await resp.text())
+        }
+        const data = await resp.json()
+        const threads: string[] = Array.isArray(data?.threads) ? data.threads : []
+        const loaded: Chat[] = []
+        for (const threadId of threads) {
+          const msgResp = await fetch(`${API_BASE}/api/threads/${threadId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (!msgResp.ok) continue
+          const msgData = await msgResp.json()
+          const messagesRaw = Array.isArray(msgData?.messages) ? msgData.messages : []
+          const messages: ChatMessage[] = messagesRaw.map((msg, index) => ({
+            id: `${threadId}-${index}`,
+            role: msg.role,
+            content: msg.content,
+            timestamp: msg.created_at ? Date.parse(msg.created_at) : Date.now(),
+          }))
+          const firstUser = messages.find(m => m.role === 'user')
+          const title = firstUser
+            ? firstUser.content.slice(0, 50) + (firstUser.content.length > 50 ? '...' : '')
+            : 'New Chat'
+          const createdAt = messages[0]?.timestamp || Date.now()
+          const updatedAt = messages[messages.length - 1]?.timestamp || createdAt
+          loaded.push({
+            id: threadId,
+            title,
+            messages,
+            createdAt,
+            updatedAt,
+          })
+        }
+        if (!cancelled) {
+          setChats(loaded)
+          setActiveChat(loaded[0] || null)
+          if (typeof window !== 'undefined') {
+            localStorage.setItem(storageKey, JSON.stringify(loaded))
+          }
+        }
+      } catch (error) {
+        console.error('[v0] Error loading chats:', error)
+      }
     }
-  }, [chats, storageKey])
+
+    loadFromServer()
+    return () => {
+      cancelled = true
+    }
+  }, [token, userId, storageKey])
 
   const createChat = (title?: string): Chat => {
     const newChat: Chat = {

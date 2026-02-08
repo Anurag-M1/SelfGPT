@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import uuid
 import time
+import bcrypt
+import jwt
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import urlparse, parse_qs
 
@@ -31,7 +34,16 @@ from app_config import (
     DEFAULT_SYSTEM_PROMPT as APP_DEFAULT_SYSTEM_PROMPT,
 )
 from rag_engine import ingest_pdf, retrieve_context, thread_document_metadata
-from storage import init_db, list_threads, get_messages, add_message, get_recent_messages
+from storage import (
+    init_db,
+    list_threads,
+    get_messages,
+    add_message,
+    get_recent_messages,
+    create_user,
+    get_user_by_email,
+    get_user_by_id,
+)
 
 DEFAULT_PROVIDER = os.getenv("DEFAULT_PROVIDER", "groq")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", APP_DEFAULT_MODEL)
@@ -42,6 +54,8 @@ RATE_LIMIT_PER_MIN = int(os.getenv("RATE_LIMIT_PER_MIN", "60"))
 MAX_UPLOAD_MB = int(os.getenv("MAX_UPLOAD_MB", "20"))
 MAX_UPLOAD_BYTES = MAX_UPLOAD_MB * 1024 * 1024
 MAX_MESSAGE_LEN = int(os.getenv("MAX_MESSAGE_LEN", "8000"))
+JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret")
+JWT_EXPIRES_DAYS = int(os.getenv("JWT_EXPIRES_DAYS", "7"))
 MAX_HISTORY_MESSAGES = os.getenv("MAX_HISTORY_MESSAGES")
 if MAX_HISTORY_MESSAGES is not None:
     try:
@@ -103,6 +117,50 @@ def _read_upload_limited(file_obj, max_bytes: int) -> bytes:
         if len(data) > max_bytes:
             raise ValueError("File too large")
     return bytes(data)
+
+
+def _hash_password(password: str) -> str:
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode("utf-8"), password_hash.encode("utf-8"))
+    except ValueError:
+        return False
+
+
+def _create_token(user_id: str) -> str:
+    payload = {
+        "sub": user_id,
+        "exp": datetime.now(timezone.utc) + timedelta(days=JWT_EXPIRES_DAYS),
+        "iat": datetime.now(timezone.utc),
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm="HS256")
+
+
+def _get_user_from_request(request: Request) -> Optional[Dict[str, str]]:
+    auth = request.headers.get("authorization", "")
+    if not auth.lower().startswith("bearer "):
+        return None
+    token = auth.split(" ", 1)[1].strip()
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except Exception:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    return get_user_by_id(str(user_id))
+
+
+def _require_user(request: Request) -> Optional[Dict[str, str]]:
+    user = _get_user_from_request(request)
+    if not user:
+        return None
+    return user
 
 cors_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 
@@ -389,14 +447,52 @@ def config():
         "providers": PROVIDERS,
     }
 
+@app.post("/api/auth/signup")
+def api_signup(payload: Dict[str, Any]):
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+    name = (payload.get("name") or "").strip()
+    if not email or not password or not name:
+        return JSONResponse(status_code=400, content={"error": "Missing fields"})
+    if get_user_by_email(email):
+        return JSONResponse(status_code=409, content={"error": "Email already exists"})
+    user_id = str(uuid.uuid4())
+    password_hash = _hash_password(password)
+    user = create_user(user_id, email, name, password_hash)
+    token = _create_token(user_id)
+    return {"token": token, "user": user}
+
+
+@app.post("/api/auth/login")
+def api_login(payload: Dict[str, Any]):
+    email = (payload.get("email") or "").strip().lower()
+    password = payload.get("password") or ""
+    if not email or not password:
+        return JSONResponse(status_code=400, content={"error": "Missing fields"})
+    user = get_user_by_email(email)
+    if not user or not _verify_password(password, user.get("password_hash", "")):
+        return JSONResponse(status_code=401, content={"error": "Invalid credentials"})
+    token = _create_token(user["id"])
+    return {"token": token, "user": {"id": user["id"], "email": user["email"], "name": user["name"]}}
+
+
+@app.get("/api/auth/me")
+def api_me(request: Request):
+    user = _require_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"user": {"id": user["id"], "email": user["email"], "name": user["name"]}}
+
 
 @app.get("/api/threads")
 def api_threads(request: Request):
     err = _check_rate_limit(request)
     if err:
         return err
-    user_id = request.query_params.get("user_id")
-    return {"threads": list_threads(user_id)}
+    user = _require_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"threads": list_threads(user["id"])}
 
 
 @app.get("/api/threads/{thread_id}")
@@ -404,8 +500,10 @@ def api_thread(thread_id: str, request: Request):
     err = _check_rate_limit(request)
     if err:
         return err
-    user_id = request.query_params.get("user_id")
-    return {"thread_id": thread_id, "messages": get_messages(user_id, thread_id)}
+    user = _require_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    return {"thread_id": thread_id, "messages": get_messages(user["id"], thread_id)}
 
 
 @app.post("/api/threads")
@@ -432,8 +530,10 @@ def api_upload(request: Request, thread_id: str = Form(...), files: List[UploadF
     err = _check_rate_limit(request)
     if err:
         return err
-    user_id = request.query_params.get("user_id")
-    scoped_thread_id = _scoped_thread_id(user_id, thread_id)
+    user = _require_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    scoped_thread_id = _scoped_thread_id(user["id"], thread_id)
     summaries = []
     for f in files:
         if f.content_type not in {"application/pdf", "application/x-pdf"}:
@@ -454,8 +554,10 @@ def api_docs(thread_id: str, request: Request):
     err = _check_rate_limit(request)
     if err:
         return err
-    user_id = request.query_params.get("user_id")
-    scoped_thread_id = _scoped_thread_id(user_id, thread_id)
+    user = _require_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
+    scoped_thread_id = _scoped_thread_id(user["id"], thread_id)
     return {"thread_id": thread_id, "metadata": thread_document_metadata(scoped_thread_id)}
 
 
@@ -464,9 +566,11 @@ def api_chat(payload: Dict[str, Any], request: Request):
     err = _check_rate_limit(request)
     if err:
         return err
-    user_id = payload.get("user_id")
+    user = _require_user(request)
+    if not user:
+        return JSONResponse(status_code=401, content={"error": "Unauthorized"})
     thread_id = payload.get("thread_id") or str(uuid.uuid4())
-    scoped_thread_id = _scoped_thread_id(user_id, thread_id)
+    scoped_thread_id = _scoped_thread_id(user["id"], thread_id)
     provider_id = payload.get("provider") or DEFAULT_PROVIDER
     model = payload.get("model") or DEFAULT_MODEL
     system_prompt = payload.get("system_prompt") or DEFAULT_SYSTEM_PROMPT
@@ -484,15 +588,15 @@ def api_chat(payload: Dict[str, Any], request: Request):
     if len(user_message) > MAX_MESSAGE_LEN:
         return JSONResponse(status_code=400, content={"error": "Message too long"})
 
-    add_message(user_id, thread_id, "user", user_message)
+    add_message(user["id"], thread_id, "user", user_message)
 
     rag = retrieve_context(user_message, scoped_thread_id)
     web_results = _web_search(user_message) if use_web else []
 
     if MAX_HISTORY_MESSAGES is None:
-        history = get_messages(user_id, thread_id)
+        history = get_messages(user["id"], thread_id)
     else:
-        history = get_recent_messages(user_id, thread_id, limit=MAX_HISTORY_MESSAGES)
+        history = get_recent_messages(user["id"], thread_id, limit=MAX_HISTORY_MESSAGES)
     if history and history[-1].get("role") == "user" and history[-1].get("content") == user_message:
         history = history[:-1]
     prompt = _build_prompt(system_prompt, user_message, rag["context"], web_results, history)
@@ -521,7 +625,7 @@ def api_chat(payload: Dict[str, Any], request: Request):
     except Exception as exc:
         return JSONResponse(status_code=500, content={"error": str(exc)})
 
-    add_message(user_id, thread_id, "assistant", response)
+    add_message(user["id"], thread_id, "assistant", response)
 
     return {
         "thread_id": thread_id,

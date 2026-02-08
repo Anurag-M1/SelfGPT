@@ -5,7 +5,7 @@ import re
 import hashlib
 import sqlite3
 from datetime import datetime, timezone
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 DB_PATH = os.getenv("DB_PATH", "chatbot.db")
 DATABASE_URL = os.getenv("DATABASE_URL")
@@ -64,6 +64,17 @@ def init_db() -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                """
+            )
         else:
             conn.execute(
                 """
@@ -79,7 +90,77 @@ def init_db() -> None:
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_messages_thread ON messages(thread_id);"
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS users (
+                    id TEXT PRIMARY KEY,
+                    email TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    password_hash TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                """
+            )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def create_user(user_id: str, email: str, name: str, password_hash: str) -> Dict[str, str]:
+    conn = _connect()
+    try:
+        if _IS_POSTGRES:
+            conn.execute(
+                "INSERT INTO users (id, email, name, password_hash, created_at) VALUES (%s, %s, %s, %s, %s)",
+                (user_id, email, name, password_hash, _utc_now()),
+            )
+        else:
+            conn.execute(
+                "INSERT INTO users (id, email, name, password_hash, created_at) VALUES (?, ?, ?, ?, ?)",
+                (user_id, email, name, password_hash, _utc_now()),
+            )
+        conn.commit()
+        return {"id": user_id, "email": email, "name": name}
+    finally:
+        conn.close()
+
+
+def get_user_by_email(email: str) -> Optional[Dict[str, str]]:
+    conn = _connect()
+    try:
+        if _IS_POSTGRES:
+            row = conn.execute(
+                "SELECT id, email, name, password_hash FROM users WHERE email = %s",
+                (email,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id, email, name, password_hash FROM users WHERE email = ?",
+                (email,),
+            ).fetchone()
+        if not row:
+            return None
+        return {"id": row[0], "email": row[1], "name": row[2], "password_hash": row[3]}
+    finally:
+        conn.close()
+
+
+def get_user_by_id(user_id: str) -> Optional[Dict[str, str]]:
+    conn = _connect()
+    try:
+        if _IS_POSTGRES:
+            row = conn.execute(
+                "SELECT id, email, name, password_hash FROM users WHERE id = %s",
+                (user_id,),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                "SELECT id, email, name, password_hash FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+        if not row:
+            return None
+        return {"id": row[0], "email": row[1], "name": row[2], "password_hash": row[3]}
     finally:
         conn.close()
 
@@ -109,15 +190,18 @@ def get_messages(user_id: str | None, thread_id: str) -> List[Dict[str, str]]:
     try:
         if _IS_POSTGRES:
             rows = conn.execute(
-                "SELECT role, content FROM messages WHERE thread_id = %s ORDER BY id",
+                "SELECT role, content, created_at FROM messages WHERE thread_id = %s ORDER BY id",
                 (scoped,),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT role, content FROM messages WHERE thread_id = ? ORDER BY id",
+                "SELECT role, content, created_at FROM messages WHERE thread_id = ? ORDER BY id",
                 (scoped,),
             ).fetchall()
-        return [{"role": role, "content": content} for role, content in rows]
+        return [
+            {"role": role, "content": content, "created_at": created_at}
+            for role, content, created_at in rows
+        ]
     finally:
         conn.close()
 
@@ -128,16 +212,19 @@ def get_recent_messages(user_id: str | None, thread_id: str, limit: int = 12) ->
     try:
         if _IS_POSTGRES:
             rows = conn.execute(
-                "SELECT role, content FROM messages WHERE thread_id = %s ORDER BY id DESC LIMIT %s",
+                "SELECT role, content, created_at FROM messages WHERE thread_id = %s ORDER BY id DESC LIMIT %s",
                 (scoped, limit),
             ).fetchall()
         else:
             rows = conn.execute(
-                "SELECT role, content FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT ?",
+                "SELECT role, content, created_at FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT ?",
                 (scoped, limit),
             ).fetchall()
         rows.reverse()
-        return [{"role": role, "content": content} for role, content in rows]
+        return [
+            {"role": role, "content": content, "created_at": created_at}
+            for role, content, created_at in rows
+        ]
     finally:
         conn.close()
 

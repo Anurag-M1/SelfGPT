@@ -8,7 +8,7 @@ import { AuthPage } from '@/components/auth-page'
 import { ChatApp } from '@/components/chat-app'
 
 function PageContent() {
-  const { user, isLoading } = useAuth()
+  const { user, token, isLoading } = useAuth()
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -30,7 +30,7 @@ function PageContent() {
 
   return user ? (
     <SettingsProvider>
-      <ChatProvider userId={user.id}>
+      <ChatProvider userId={user.id} token={token}>
         <ChatApp />
       </ChatProvider>
     </SettingsProvider>
