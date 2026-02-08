@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from 'react'
 
-const API_BASE = ''
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ''
 
 const STORAGE_KEY = 'selfgpt_settings'
 

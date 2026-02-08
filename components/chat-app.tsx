@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/dropdown-menu'
 import { Sparkles } from 'lucide-react'
 
-const API_BASE = ''
+const API_BASE =
+  process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || ''
 
 export function ChatApp() {
   const [settingsOpen, setSettingsOpen] = useState(false)

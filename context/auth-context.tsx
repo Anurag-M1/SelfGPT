@@ -36,15 +36,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } catch {
             localStorage.removeItem('selfgpt_user')
           }
-        } else {
-          const guestUser: User = {
-            id: `guest-${Date.now()}`,
-            email: 'guest@selfgpt.local',
-            name: 'Guest',
-            theme: 'dark',
-          }
-          setUser(guestUser)
-          localStorage.setItem('selfgpt_user', JSON.stringify(guestUser))
         }
       }
     } catch (error) {
