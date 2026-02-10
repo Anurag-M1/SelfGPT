@@ -147,6 +147,7 @@ npm run dev:full
 This starts:
 - FastAPI on `http://localhost:8000`
 - Next.js on `http://localhost:3000`
+- live : https://self-gpt-iota.vercel.app
 
 ## Security Notes (Production‑Grade Defaults)
 - **Rate limiting**: per‑IP, per minute.
